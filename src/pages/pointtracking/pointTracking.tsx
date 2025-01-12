@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import {BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,Tooltip,Legend,ResponsiveContainer,} from "recharts";
-import { Clock, Target, Calendar as CalendarIcon,  CheckCircle2, ChevronRight, Activity, LayoutDashboard, X, ChevronLeft,} from "lucide-react";
+import { PieChart, Pie, Cell,Tooltip,Legend,ResponsiveContainer,} from "recharts";
+import {  Calendar as CalendarIcon, ChevronRight,  X, ChevronLeft,} from "lucide-react";
 import { collection, getDocs, DocumentReference, query, where, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { getAuth } from "firebase/auth";
@@ -165,10 +165,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
 const PointTrackingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [events, setEvents] = useState<Event[]>([]);
-  const [mycsdPoints, setMycsdPoints] = useState<MycsdPoint[]>([]);
+  const [, setMycsdPoints] = useState<MycsdPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [goalPoints, setGoalPoints] = useState(100);
+  const [goalPoints] = useState(100);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -269,10 +269,6 @@ const PointTrackingPage: React.FC = () => {
     setSelectedDate(date);
     setShowCalendar(false);
     // Filter events by selected date
-    const selectedDateStr = date.toISOString().split('T')[0];
-    const filteredEvents = events.filter(
-      (event) => event.event_date === selectedDateStr
-    );
     // Additional logic for filtered events can be added here
   };
 
@@ -393,7 +389,7 @@ const PointTrackingPage: React.FC = () => {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {progressData.map((entry, index) => (
+                    {progressData.map((_entry, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={COLORS[index % COLORS.length]}

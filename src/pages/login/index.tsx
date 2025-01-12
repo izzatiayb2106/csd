@@ -76,6 +76,11 @@ const Login: React.FunctionComponent<ILoginProps> = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
+              {error && (
+                <div className="p-3 text-sm text-red-600 bg-red-100 rounded-md">
+                  {error}
+                </div>
+              )}
               <Button 
                 variant="outline" 
                 onClick={handleGoogleSignIn}

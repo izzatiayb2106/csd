@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { db } from "../../firebaseConfig";
+import { db} from "../../firebaseConfig";
 import { getDocs, collection, query, where } from 'firebase/firestore';
 import ClubSidebar from "@/components/sidebar/club";
 import { useUserAuth } from "@/context/userAuthContext";
