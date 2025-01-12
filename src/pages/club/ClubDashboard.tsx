@@ -6,7 +6,7 @@ import ClubSidebar from "@/components/sidebar/club";
 import { useUserAuth } from "@/context/userAuthContext";
 import '@uploadcare/react-uploader/core.css';
 import { useState, useEffect } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -150,26 +150,26 @@ const ClubDashboard = () => {
           <div className="p-6 space-y-6">
             <h1 className="text-3xl font-bold">Event Analytics</h1>
 
-            {/* Event Selection */}
-            <Card className="w-full">
-              <CardHeader>
-                <CardTitle>Select Event</CardTitle>
-              </CardHeader>
-              <CardContent>
-              <CardContent>
-                <Select>
-                  <SelectTrigger className="w-full">
-                  </SelectTrigger>
-                  <SelectContent>
-                    {events.map((event) => (
-                      <SelectItem key={event.id} value={event.id}>
-                        {event.event_title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+          {/* Event Selection */}
+          <Card className="w-full">
+          <CardHeader>
+          <CardTitle>Select Event</CardTitle>
+          </CardHeader>
+         <CardContent>
+         <Select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select an event" />
+          </SelectTrigger>
+          <SelectContent>
+        {events.map((event) => (
+          <SelectItem key={event.id} value={event.id}>
+            {event.event_title}
+          </SelectItem>
+               ))}
+           </SelectContent>
+          </Select>
+          </CardContent>
+          </Card>
 
             {/* Events List with Analytics */}
             <Card>
