@@ -3,7 +3,7 @@ import AdminSidebar from "@/components/sidebar/admin";
 import { useState, useEffect } from "react";
 import { Users, Calendar, Clock, Award } from "lucide-react";
 import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer} from "recharts";
-import { collection, query, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];

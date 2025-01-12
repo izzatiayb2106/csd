@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { QrCode, Calendar, CheckCircle } from "lucide-react";
+import { QrCode, CheckCircle } from "lucide-react";
 import { db, auth } from "../../firebaseConfig";
 import {
   collection,

@@ -1,15 +1,12 @@
 import * as React from "react";
-import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { BarChart3, Calendar, Users } from "lucide-react";
 import { db } from "../../firebaseConfig";
 import { getDocs, collection, query, where } from 'firebase/firestore';
 import ClubSidebar from "@/components/sidebar/club";
 import { useUserAuth } from "@/context/userAuthContext";
 import '@uploadcare/react-uploader/core.css';
 import { useState, useEffect } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger} from "@/components/ui/select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -46,16 +43,13 @@ const ClubLayout: React.FC<ClubLayoutProps> = ({ children }) => {
 export { ClubLayout };
 
 const ClubDashboard = () => {
-  const navigate = useNavigate();
   const { user } = useUserAuth();
   const [clubName, setClubName] = useState<string>("");
   const [clubId, setClubId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [monthlyData, setMonthlyData] = useState<{ month: string; participants: number }[]>([]);
-  const [bannerUrl, setBannerUrl] = useState<string>("https://via.placeholder.com/1200x400");
 
   useEffect(() => {
     const fetchClubData = async () => {
@@ -162,9 +156,9 @@ const ClubDashboard = () => {
                 <CardTitle>Select Event</CardTitle>
               </CardHeader>
               <CardContent>
-                <Select onValueChange={(value) => setSelectedEvent(value)}>
+              <CardContent>
+                <Select>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose an event" />
                   </SelectTrigger>
                   <SelectContent>
                     {events.map((event) => (

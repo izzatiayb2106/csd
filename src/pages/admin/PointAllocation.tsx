@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Users, FileText, Award, X } from "lucide-react";
 import { db } from "../../firebaseConfig";
-import { collection, query, onSnapshot, where, doc, updateDoc, getDocs, writeBatch, getDoc,} from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, getDocs, writeBatch, getDoc,} from "firebase/firestore";
 import { toast } from "react-hot-toast";
 import { AdminLayout } from "./AdminDashboard";
 

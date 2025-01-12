@@ -14,7 +14,7 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
   const { user, loading } = useUserAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [, setWindowWidth] = useState(window.innerWidth);
 
   useEffect(() => {
     const handleResize = () => {
