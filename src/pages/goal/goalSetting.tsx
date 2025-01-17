@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Calendar as CalendarIcon, Target, Plus, Check, Star, User, LogOut } from 'lucide-react';
+import { Bell, Calendar as CalendarIcon, Target, Plus, Star, User, LogOut, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { db, auth } from "../../firebaseConfig";
-import { collection, addDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc, DocumentReference, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -13,18 +12,20 @@ type Value = Date | Date[] | null | [Date | null, Date | null];
 
 interface Goal {
   id: string;
-  stud_email: string;
+  stud_id: DocumentReference;
   goal_title: string;
   goal_points: number;
-  goal_deadline: string;
+  goal_deadline?: string;
   completed: boolean;
   goal_type: 'short-term' | 'long-term';
   goal_milestones?: string[];
+  semester?: string;
+  createdAt: Date | string;
 }
 
 interface Event {
   id: string;
-  stud_email: string;
+  stud_id: DocumentReference;
   event_name: string;
   event_date: string;
   event_time: string;
@@ -33,16 +34,47 @@ interface Event {
   points: number;
 }
 
+interface Toast {
+  id: number;
+  message: string;
+  type: 'error' | 'success' | 'warning';
+}
+
+interface StudentData {
+  stud_name: string;
+  stud_email: string;
+  stud_matrics: string;
+  createdAt: string;
+}
+
+interface MYCSD {
+  club_id: DocumentReference;
+  event_id: DocumentReference;
+  mycsd_point: number;
+  mycsd_status: string;
+  stud_id: DocumentReference;
+}
+
 const formatDate = (date: Date): string => {
   return date.toLocaleDateString('en-GB'); // This will format as dd/mm/yyyy
 };
 
+const calculateProgress = (currentPoints: number, targetPoints: number): number => {
+  return Math.min((currentPoints / targetPoints) * 100, 100);
+};
+
+const formatDateForInput = (date: Date): string => {
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().split('T')[0];
+};
+
+const getTodayString = (): string => {
+  const today = new Date();
+  return formatDateForInput(today);
+};
+
 const MyCSDDashboard = () => {
-  // Current MyCSD Points Status
-  const [pointsStatus] = useState({
-    current: 12,
-    //target: 30
-  });
 
   const [goals, setGoals] = useState<{
     shortTerm: Goal[];
@@ -52,21 +84,24 @@ const MyCSDDashboard = () => {
     longTerm: []
   });
 
-  const [stud_email, setStudEmail] = useState<string | null>(null);
+  const [stud_id, setStudId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      setStudEmail(user?.email || null);
+      setStudId(user?.uid || null);
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!stud_email) return;
+    if (!stud_id) return;
+
+    // Create a reference to the student document
+    const studentRef = doc(db, 'STUDENT', stud_id);
 
     const goalsQuery = query(
       collection(db, 'GOALS'),
-      where('stud_email', '==', stud_email)
+      where('stud_id', '==', studentRef)  // Use the reference in the query
     );
     
     const unsubscribe = onSnapshot(goalsQuery, (snapshot) => {
@@ -74,9 +109,12 @@ const MyCSDDashboard = () => {
       const longTermGoals: Goal[] = [];
       
       snapshot.forEach((doc) => {
-        const goal = { id: doc.id, ...doc.data() } as Goal;
-        console.log("Goal data:", goal);
-        console.log("Goal type:", goal.goal_type);
+        const goal = { 
+          id: doc.id, 
+          ...doc.data(),
+          stud_id: doc.data().stud_id  // The reference will be maintained
+        } as Goal;
+        
         if (goal.goal_type === 'short-term') {
           shortTermGoals.push(goal);
         } else {
@@ -91,17 +129,20 @@ const MyCSDDashboard = () => {
     });
 
     return () => unsubscribe();
-  }, [stud_email]);
+  }, [stud_id]);
 
   // Calendar Events State
   const [events, setEvents] = useState<Event[]>([]);
 
   useEffect(() => {
-    if (!stud_email) return;
+    if (!stud_id) return;
+
+    // Create a reference to the student document
+    const studentRef = doc(db, 'STUDENT', stud_id);
 
     const remindersQuery = query(
       collection(db, 'REMINDER'),
-      where('stud_email', '==', stud_email)
+      where('stud_id', '==', studentRef)  // Use the reference in the query
     );
     
     const unsubscribe = onSnapshot(remindersQuery, (snapshot) => {
@@ -110,7 +151,7 @@ const MyCSDDashboard = () => {
         const data = doc.data();
         eventsData.push({
           id: doc.id,
-          stud_email: data.stud_email,
+          stud_id: data.stud_id,  // The reference will be maintained
           event_name: data.reminder_name,
           event_date: data.reminder_date,
           event_time: data.reminder_time,
@@ -119,11 +160,28 @@ const MyCSDDashboard = () => {
           points: 0
         });
       });
+
+      // Sort events by date and time
+      eventsData.sort((a, b) => {
+        const dateA = new Date(`${a.event_date} ${a.event_time}`);
+        const dateB = new Date(`${b.event_date} ${b.event_time}`);
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      console.log("Fetched Events:", eventsData); // Debugging statement
       setEvents(eventsData);
     });
 
     return () => unsubscribe();
-  }, [stud_email]);
+  }, [stud_id]);
+
+  const isEventUpcoming = (eventDate: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(eventDate);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate >= today;
+  };
 
   // Modal State
   const [isModalOpen, setModalOpen] = useState(false);
@@ -132,7 +190,10 @@ const MyCSDDashboard = () => {
   // Toggle Modal
   const toggleModal = () => {
     setModalOpen(!isModalOpen);
-    setGoalType('short-term');
+    if (!isModalOpen) {
+      setGoalType('short-term');
+      setEditingGoal(null);
+    }
   };
   const toggleEventModal = () => {
     setEventModalOpen(!isEventModalOpen);
@@ -143,25 +204,45 @@ const MyCSDDashboard = () => {
   const handleGoalSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const formData = new FormData(event.target as HTMLFormElement);
+    const goalType = formData.get('type') as string;
     
-    const newGoal = {
-      stud_email,
-      goal_type: formData.get('type') as string,
+    if (!stud_id) return;
+
+    const studentRef = doc(db, 'STUDENT', stud_id);
+    
+    const goalData = {
+      stud_id: studentRef,
+      goal_type: goalType,
       goal_title: formData.get('name') as string,
       goal_points: Number(formData.get('points')),
-      goal_deadline: formData.get('dueDate') as string,
-      completed: false,
-      createdAt: new Date(),
-      goal_milestones: (formData.get('milestones') as string)?.split('\n') || undefined,
+      completed: editingGoal ? editingGoal.completed : false,
+      createdAt: editingGoal ? editingGoal.createdAt : new Date(),
     };
+
+    if (goalType === 'short-term') {
+      Object.assign(goalData, {
+        goal_deadline: formData.get('dueDate') as string,
+        goal_milestones: (formData.get('milestones') as string)?.split('\n') || [],
+      });
+    } else {
+      Object.assign(goalData, {
+        semester: formData.get('name') as string,
+      });
+    }
     
     try {
-      const docRef = await addDoc(collection(db, 'GOALS'), newGoal);
-      console.log("Goal successfully added with ID:", docRef.id);
+      if (editingGoal) {
+        await updateDoc(doc(db, 'GOALS', editingGoal.id), goalData);
+        showToast('Goal successfully updated', 'success');
+      } else {
+        await addDoc(collection(db, 'GOALS'), goalData);
+        showToast('Goal successfully added', 'success');
+      }
+      setEditingGoal(null);
       toggleModal();
     } catch (error) {
-      console.error("Error adding goal:", error);
-      alert("Failed to add goal. Please try again.");
+      console.error("Error saving goal:", error);
+      showToast('Failed to save goal. Please try again.', 'error');
     }
   };
   
@@ -169,8 +250,22 @@ const MyCSDDashboard = () => {
 const handleEventSubmit = async (event: React.FormEvent) => {
   event.preventDefault();
   const formData = new FormData(event.target as HTMLFormElement);
-  const newReminder = {
-    stud_email,
+  const selectedDate = new Date(formData.get('date') as string);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (selectedDate < today) {
+    showToast('Please select a future date', 'error');
+    return;
+  }
+
+  if (!stud_id) return;
+
+  // Create a reference to the student document
+  const studentRef = doc(db, 'STUDENT', stud_id);
+
+  const reminderData = {
+    stud_id: studentRef,  // Use the reference instead of the ID string
     reminder_name: formData.get('name') as string,
     reminder_date: formData.get('date') as string,
     reminder_time: formData.get('time') as string,
@@ -180,12 +275,18 @@ const handleEventSubmit = async (event: React.FormEvent) => {
   };
 
   try {
-    const docRef = await addDoc(collection(db, 'REMINDER'), newReminder);
-    console.log('Reminder successfully added with ID:', docRef.id);
+    if (editingEvent) {
+      await updateDoc(doc(db, 'REMINDER', editingEvent.id), reminderData);
+      showToast('Reminder successfully updated', 'success');
+    } else {
+      await addDoc(collection(db, 'REMINDER'), reminderData);
+      showToast('Reminder successfully added', 'success');
+    }
+    setEditingEvent(null);
     toggleEventModal();
   } catch (error) {
-    console.error('Error adding reminder:', error);
-    alert('Failed to add reminder. Please try again.');
+    console.error('Error saving reminder:', error);
+    showToast('Failed to save reminder. Please try again.', 'error');
   }
 };
 
@@ -226,11 +327,190 @@ const handleEventSubmit = async (event: React.FormEvent) => {
   // Modify calendar click handler
   const handleDateClick = (value: Value) => {
     if (value instanceof Date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (value < today) {
+        showToast('Cannot add reminders for past dates', 'error');
+        return;
+      }
+      
       setDate(value);
       setSelectedDate(value);
       toggleEventModal();
     }
   };
+
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (window.confirm('Are you sure you want to delete this reminder?')) {
+      try {
+        await deleteDoc(doc(db, 'REMINDER', eventId));
+        showToast('Reminder deleted successfully', 'success');
+      } catch (error) {
+        console.error('Error deleting reminder:', error);
+        showToast('Failed to delete reminder', 'error');
+      }
+    }
+  };
+
+  const handleEditEvent = (event: Event) => {
+    setEditingEvent(event);
+    setEventModalOpen(true);
+  };
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (message: string, type: 'error' | 'success' | 'warning') => {
+    const id = Date.now();
+    const newToast = { id, message, type };
+    
+    setToasts(prev => [...prev, newToast]);
+    
+    // Also add to notifications if it's a warning
+    if (type === 'warning') {
+      setNotifications(prev => [...prev, newToast]);
+    }
+    
+    // Remove from toasts after 3 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 7000);
+  };
+
+  // Add new function to handle goal deletion
+  const handleDeleteGoal = async (goalId: string) => {
+    if (window.confirm('Are you sure you want to delete this goal?')) {
+      try {
+        await deleteDoc(doc(db, 'GOALS', goalId));
+        showToast('Goal deleted successfully', 'success');
+      } catch (error) {
+        console.error('Error deleting goal:', error);
+        showToast('Failed to delete goal', 'error');
+      }
+    }
+  };
+
+  // Add state for editing goal
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+
+  // Add function to handle goal editing
+  const handleEditGoal = (goal: Goal) => {
+    setEditingGoal(goal);
+    setModalOpen(true);
+  };
+
+  // Add state for student data
+  const [studentData, setStudentData] = useState<StudentData | null>(null);
+
+  // Add effect to fetch student data
+  useEffect(() => {
+    if (!stud_id) return;
+
+    const fetchStudentData = async () => {
+      try {
+        const studentDoc = await getDoc(doc(db, 'STUDENT', stud_id));
+        if (studentDoc.exists()) {
+          setStudentData(studentDoc.data() as StudentData);
+        }
+      } catch (error) {
+        console.error('Error fetching student data:', error);
+      }
+    };
+
+    fetchStudentData();
+  }, [stud_id]);
+
+  // Add state to track shown notifications
+  const [shownNotifications, setShownNotifications] = useState<Set<string>>(new Set());
+
+  // Update the checkNotifications function
+  const checkNotifications = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Create unique keys for notifications
+    events.forEach(event => {
+      const eventDate = new Date(event.event_date);
+      eventDate.setHours(0, 0, 0, 0);
+
+      if (eventDate.getTime() === today.getTime()) {
+        const notificationKey = `event_${event.id}_${event.event_date}`;
+        if (!shownNotifications.has(notificationKey)) {
+          showToast(
+            `Event Today: ${event.event_name} at ${event.event_time}`,
+            'warning'
+          );
+          setShownNotifications(prev => new Set([...prev, notificationKey]));
+        }
+      }
+    });
+
+    goals.shortTerm.forEach(goal => {
+      const deadline = new Date(goal.goal_deadline!);
+      const daysUntilDeadline = Math.ceil(
+        (deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      if (!goal.completed) {
+        if (daysUntilDeadline === 5) {
+          const notificationKey = `goal_${goal.id}_5days`;
+          if (!shownNotifications.has(notificationKey)) {
+            showToast(
+              `5 days left to complete goal: ${goal.goal_title}`,
+              'warning'
+            );
+            setShownNotifications(prev => new Set([...prev, notificationKey]));
+          }
+        } else if (daysUntilDeadline === 2) {
+          const notificationKey = `goal_${goal.id}_2days`;
+          if (!shownNotifications.has(notificationKey)) {
+            showToast(
+              `Only 2 days left to complete goal: ${goal.goal_title}`,
+              'warning'
+            );
+            setShownNotifications(prev => new Set([...prev, notificationKey]));
+          }
+        }
+      }
+    });
+  };
+
+  // Update the effect dependencies to include shownNotifications
+  useEffect(() => {
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 1000 * 60 * 60);
+    return () => clearInterval(interval);
+  }, [events, goals.shortTerm, shownNotifications]);
+
+  // Update the notifications dropdown to show stored notifications
+  const [notifications, setNotifications] = useState<Toast[]>([]);
+
+  const [mycsdPoints, setMycsdPoints] = useState<number>(0);
+
+  useEffect(() => {
+    if (!stud_id) return;
+
+    const studentRef = doc(db, 'STUDENT', stud_id);
+
+    const mycsdQuery = query(
+      collection(db, 'MYCSD'),
+      where('stud_id', '==', studentRef),
+      where('mycsd_status', '==', 'assigned')
+    );
+
+    const unsubscribe = onSnapshot(mycsdQuery, (snapshot) => {
+      let totalPoints = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data() as MYCSD;
+        totalPoints += data.mycsd_point;
+      });
+      setMycsdPoints(totalPoints);
+    });
+
+    return () => unsubscribe();
+  }, [stud_id]);
 
   return (
     <Layout>
@@ -257,11 +537,17 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                     <div className="px-4 py-2 border-b">
                       <h3 className="font-semibold">Notifications</h3>
                     </div>
-                    {/* Add your notifications items here */}
-                    <div className="px-4 py-2 hover:bg-gray-50">
-                      <p className="font-medium">New Event Added</p>
-                      <p className="text-sm text-gray-500">Programming Workshop tomorrow</p>
-                    </div>
+                    {notifications.length > 0 ? (
+                      notifications.map(notification => (
+                        <div key={notification.id} className="px-4 py-2 hover:bg-gray-50">
+                          <p className="font-medium">{notification.message}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-gray-500">
+                        No notifications
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -273,7 +559,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                   className="flex items-center space-x-2 hover:bg-gray-100 rounded-lg px-3 py-2"
                 >
                   <User className="w-5 h-5" />
-                  <span>{stud_email}</span>
+                  <span>{studentData?.stud_name || 'Loading...'}</span>
                 </button>
 
                 {/* Profile Dropdown */}
@@ -309,7 +595,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                 <Star className="text-yellow-500" />
                 <div>
                   <p className="text-sm text-gray-500">MyCSD Points</p>
-                  <p className="text-xl font-bold">{pointsStatus.current}</p>
+                  <p className="text-xl font-bold">{mycsdPoints}</p>
                 </div>
               </CardContent>
             </Card>
@@ -321,11 +607,11 @@ const handleEventSubmit = async (event: React.FormEvent) => {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
-                    <Target className="text-blue-600" />
+                    <Target className="text-purple-600" />
                     My Goals
                   </CardTitle>
                   <button
-                    className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700"
+                    className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-purple-700"
                     onClick={toggleModal}
                   >
                     <Plus className="inline-block mr-1 h-4 w-4" />
@@ -338,13 +624,13 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                     <div className="flex space-x-4 border-b pb-2">
                       <button
                         className={`px-3 py-2 text-sm font-medium ${
-                          activeTab === 'short-term' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'
+                          activeTab === 'short-term' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-600'
                         }`}
                         onClick = {() => setActiveTab('short-term')}
                       >Short-Term Goals</button>
                       <button
                         className={`px-3 py-2 text-sm font-medium ${
-                          activeTab === 'long-term' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'
+                          activeTab === 'long-term' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-600'
                         }`}
                         onClick={() => setActiveTab('long-term')}
                         >Long-Term Goals</button>
@@ -357,19 +643,38 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                     {activeTab === 'short-term' && (
                       <div className='space-y-4'>
                         {goals.shortTerm.map((goal) => (
-                          <div key={goal.id} className='flex items-center justify-between p-4 bg-gray-50 rounded-lg'>
-                            <div className="flex items-center gap-3">
-                              <button className='w-5 h-5 rounded-full border-2 border-gray-400 flex items-center justify-center'>
-                                {goal.completed && <Check className="w-4 h-4 text-blue-600" />}
-                              </button>
+                          <div key={goal.id} className='p-4 bg-gray-50 rounded-lg'>
+                            <div className="flex justify-between items-start mb-3">
                               <div>
-                                <p className='font-medium'>{goal.goal_title}</p>
-                                <p className='text-sm text-gray-500'>Due: {formatDate(new Date(goal.goal_deadline))}</p>
+                                <h3 className="font-medium">{goal.goal_title}</h3>
+                                <p className="text-sm text-gray-500">Due: {formatDate(new Date(goal.goal_deadline!))}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className='bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded'>
+                                  {goal.goal_points} points
+                                </span>
+                                <button
+                                  onClick={() => handleEditGoal(goal)}
+                                  className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteGoal(goal.id)}
+                                  className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
-                            <span className='bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded'>
-                              {goal.goal_points} points
-                            </span>
+                            <div className='space-y-2 pl-4'>
+                              {goal.goal_milestones?.map((milestone, index) => (
+                                <div key={index} className="flex items-center gap-2 text-sm">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                  <span>{milestone}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -379,22 +684,28 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                       <div className='space-y-4'>
                         {goals.longTerm.map((goal) => (
                           <div key={goal.id} className='p-4 bg-gray-50 rounded-lg'>
-                            <div className="flex justify-between items-start mb-3">
+                            <div className="flex justify-between items-start mb-2">
                               <div>
-                                <h3 className="font-medium">{goal.goal_title}</h3>
-                                <p className="text-sm text-gray-500">Target: {formatDate(new Date(goal.goal_deadline))}</p>
+                                <h3 className="font-medium">{goal.semester}</h3>
+                                <p className="text-sm text-gray-500">
+                                  Progress: {mycsdPoints} / {goal.goal_points} points
+                                </p>
                               </div>
-                              <span className='bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded'>
-                                {goal.goal_points} points
-                              </span>
                             </div>
-                            <div className='space-y-2 pl-4'>
-                              {goal.goal_milestones?.map((milestone, index) => (
-                                <div key={index} className="flex items-center gap-2 text-sm">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                                  <span>{milestone}</span>
-                                </div>
-                              ))}
+                            
+                            {/* Progress Bar */}
+                            <div className="mt-2">
+                              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                <div
+                                  className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
+                                  style={{ 
+                                    width: `${calculateProgress(mycsdPoints, goal.goal_points)}%` 
+                                  }}
+                                ></div>
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1 text-right">
+                                {Math.round(calculateProgress(mycsdPoints, goal.goal_points))}%
+                              </p>
                             </div>
                           </div>
                         ))}
@@ -409,7 +720,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CalendarIcon className="text-blue-600" />
+                  <CalendarIcon className="text-purple-600" />
                   Calendar
                 </CardTitle>
               </CardHeader>
@@ -434,7 +745,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
               </CardContent>
             </Card>
 
-            {/* Notifications Panel */}
+            {/* Notifications Panel
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -464,7 +775,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                   </Alert>
                 </div>
               </CardContent>
-            </Card>
+            </Card> */}
 
 
               {/* Event Section */}
@@ -472,11 +783,11 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
-                      <CalendarIcon className="text-blue-600" />
+                      <CalendarIcon className="text-purple-600" />
                       Upcoming Events
                     </CardTitle>
                     <button
-                      className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700"
+                      className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-purple-700"
                       onClick={toggleEventModal}
                     >
                       <Plus className="inline-block mr-1 h-4 2-4" />
@@ -485,16 +796,35 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {events.map(event => (
+                      {events.filter(event => isEventUpcoming(event.event_date)).length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-2">No upcoming events</p>
+                      )}
+                      {events.filter(event => isEventUpcoming(event.event_date)).map(event => (
                         <div key={event.id} className="p-4 border rounded-lg">
-                          <div>
-                            <h3 className="font-medium">{event.event_name}</h3>
-                            <p className="text-sm text-gray-500">
-                              {formatDate(new Date(event.event_date))} at {event.event_time} • {event.venue}
-                            </p>
-                            <p className="text-sm text-gray-600 mt-2">
-                              Notes: {event.event_notes}
-                            </p>
+                          <div className="flex justify-between">
+                            <div>
+                              <h3 className="font-medium">{event.event_name}</h3>
+                              <p className="text-sm text-gray-500">
+                                {formatDate(new Date(event.event_date))} at {event.event_time} • {event.venue}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-2">
+                                Notes: {event.event_notes}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleEditEvent(event)}
+                                className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEvent(event.id)}
+                                className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -508,7 +838,9 @@ const handleEventSubmit = async (event: React.FormEvent) => {
             {isModalOpen && (
               <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
                 <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-                  <h2 className="text-lg font-semibold mb-4">Set New Goal</h2>
+                  <h2 className="text-lg font-semibold mb-4">
+                    {editingGoal ? 'Edit Goal' : 'Set New Goal'}
+                  </h2>
                   <form 
                     onSubmit={handleGoalSubmit} 
                     className="space-y-4"
@@ -524,43 +856,78 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                         <option value="long-term">Long Term</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Goal Name</label>
-                      <input
-                        type="text"
-                        name="name"
-                        required
-                        className="w-full border rounded px-3 py-2"
-                        placeholder="Enter goal name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Due Date</label>
-                      <input
-                        type="date"
-                        name="dueDate"
-                        required
-                        className="w-full border rounded px-3 py-2"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">MyCSD Points</label>
-                      <input
-                        type="number"
-                        name="points"
-                        required
-                        className="w-full border rounded px-3 py-2"
-                        placeholder="Expected points"
-                      />
-                    </div>
-                    <div className={goalType === 'long-term' ? 'block' : 'hidden'}>
-                      <label className="block text-sm font-medium mb-1">Milestones</label>
-                        <textarea
-                          name="milestones"
-                          className="w-full border rounded px-3 py-2"
-                          placeholder="Enter milestones (one per line)"
-                        ></textarea>
-                    </div>
+
+                    {goalType === 'short-term' ? (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Goal Name</label>
+                          <input
+                            type="text"
+                            name="name"
+                            required
+                            defaultValue={editingGoal?.goal_title || ''}
+                            className="w-full border rounded px-3 py-2"
+                            placeholder="Enter goal name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Due Date</label>
+                          <input
+                            type="date"
+                            name="dueDate"
+                            required
+                            defaultValue={editingGoal?.goal_deadline || ''}
+                            className="w-full border rounded px-3 py-2"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">MyCSD Points</label>
+                          <input
+                            type="number"
+                            name="points"
+                            required
+                            defaultValue={editingGoal?.goal_points || ''}
+                            className="w-full border rounded px-3 py-2"
+                            placeholder="Expected points"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Milestones</label>
+                          <textarea
+                            name="milestones"
+                            className="w-full border rounded px-3 py-2"
+                            placeholder="Enter milestones (one per line)"
+                            defaultValue={editingGoal?.goal_milestones?.join('\n') || ''}
+                            required
+                          ></textarea>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Semester</label>
+                          <select
+                            name="name"
+                            required
+                            className="w-full border rounded px-3 py-2"
+                          >
+                            <option value="Semester 1">Semester 1</option>
+                            <option value="Semester 2">Semester 2</option>
+                            <option value="Semester 3">Semester 3</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Target Points</label>
+                          <input
+                            type="number"
+                            name="points"
+                            required
+                            className="w-full border rounded px-3 py-2"
+                            placeholder="Enter target points"
+                          />
+                        </div>
+                      </>
+                    )}
                     
                     <div className="flex justify-end space-x-3">
                       <button
@@ -572,7 +939,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                       </button>
                       <button
                         type="submit"
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                        className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
                       >
                         Save
                       </button>
@@ -587,7 +954,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
               <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
                 <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
                   <h2 className="text-lg font-semibold mb-4">
-                    Add Reminder on {selectedDate ? formatDate(selectedDate) : ''}
+                    {editingEvent ? 'Edit Reminder' : `Add Reminder on ${selectedDate ? formatDate(selectedDate) : ''}`}
                   </h2>
                   <form
                     onSubmit={handleEventSubmit}
@@ -599,21 +966,29 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                         type="text"
                         name="name"
                         required
+                        defaultValue={editingEvent?.event_name || ''}
                         className="w-full border rounded px-3 py-2"
                         placeholder="Enter reminder"
                       />
                     </div>
-                    <input
-                      type="hidden"
-                      name="date"
-                      value={selectedDate?.toISOString().split('T')[0]}
-                    />
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Date</label>
+                      <input
+                        type="date"
+                        name="date"
+                        required
+                        min={getTodayString()}
+                        defaultValue={editingEvent?.event_date || (selectedDate ? formatDateForInput(selectedDate) : '')}
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Time</label>
                       <input
                         type="time"
                         name="time"
                         required
+                        defaultValue={editingEvent?.event_time || ''}
                         className="w-full border rounded px-3 py-2"
                       />
                     </div>
@@ -623,6 +998,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                         type="text"
                         name="venue"
                         required
+                        defaultValue={editingEvent?.venue || ''}
                         className="w-full border rounded px-3 py-2"
                         placeholder="Enter venue"
                       />
@@ -631,6 +1007,7 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                       <label className="block text-sm font-medium mb-1">Notes</label>
                       <textarea
                         name="notes"
+                        defaultValue={editingEvent?.event_notes || ''}
                         className="w-full border rounded px-3 py-2"
                         placeholder="Enter additional notes"
                       ></textarea>
@@ -639,15 +1016,18 @@ const handleEventSubmit = async (event: React.FormEvent) => {
                       <button
                         type="button"
                         className="bg-gray-300 text-gray-700 px-4 py-2 rounded"
-                        onClick={toggleEventModal}
+                        onClick={() => {
+                          setEditingEvent(null);
+                          toggleEventModal();
+                        }}
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                        className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
                       >
-                        Save
+                        {editingEvent ? 'Update' : 'Save'}
                       </button>
                     </div>
                   </form>
@@ -655,6 +1035,19 @@ const handleEventSubmit = async (event: React.FormEvent) => {
               </div>
             )}
          </div>
+      </div>
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`px-4 py-2 rounded-lg shadow-lg text-white transform transition-all duration-300 ${
+              toast.type === 'error' ? 'bg-red-500' :
+              toast.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500'
+            }`}
+          >
+            {toast.message}
+          </div>
+        ))}
       </div>
     </Layout>
   );

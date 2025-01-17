@@ -1,26 +1,11 @@
 import { useState, useEffect } from "react";
 import { QrCode, CheckCircle } from "lucide-react";
 import { db, auth } from "../../firebaseConfig";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  doc,
-  getDoc,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc, updateDoc, Timestamp,} from "firebase/firestore";
 import {ClubLayout} from "./ClubDashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 
 interface ClubData {
@@ -168,13 +153,15 @@ const ClubAttendance: React.FC = () => {
   }, [clubData?.id, eventFilter]);
 
   const generateUniqueQRCode = (eventId: string): string => {
-    const randomPart = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Remove the leading space in the baseUrl
+    const baseUrl = "https://5c08-115-164-207-56.ngrok-free.app";
+    const encodedEventId = encodeURIComponent(eventId);
+    const fullUrl = `${baseUrl}/event-attendance/${encodedEventId}`;
     
-    const timestamp = Date.now().toString(36);
-    return `${eventId}-${randomPart}-${timestamp}`;
-  };
+    // Add debug logging
+    console.log('Generated QR URL:', fullUrl);
+    return fullUrl;
+};
 
   const handleStatusChange = async (eventId: string) => {
     setIsUpdating(true);
@@ -348,11 +335,25 @@ const ClubAttendance: React.FC = () => {
                   value={selectedEvent.qr_code}
                   size={256}
                   level="H"
-                />
+                  includeMargin={true}
+                  onError={(error) => {
+                  console.error('QR Code generation error:', error);
+          }}
+            />
                 <p className="text-sm text-gray-500 text-center">
                   Scan this QR code to record attendance for{" "}
                   {selectedEvent.event_title}
                 </p>
+
+                {/* Add this for testing */}
+              <a 
+                  href={selectedEvent.qr_code} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-500 underline"
+              >
+                Test Link
+              </a>
               </div>
             )}
           </DialogContent>

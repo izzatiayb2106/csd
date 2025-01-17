@@ -28,12 +28,17 @@ const Login: React.FunctionComponent<ILoginProps> = () => {
   const [error, setError] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
+  // Get return URL from search params
+  const searchParams = new URLSearchParams(window.location.search);
+  const returnUrl = searchParams.get('returnUrl');
+
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     try {
       setIsLoading(true);
       await googleSignIn();
-      navigate("/");
+      // Navigate to return URL if it exists, otherwise go to home
+      navigate(returnUrl || "/");
     } catch (error: any) {
       setError(error.message || "Failed to sign in with Google");
       console.error("Error:", error);
@@ -53,7 +58,8 @@ const Login: React.FunctionComponent<ILoginProps> = () => {
       setIsLoading(true);
       setError("");
       await logIn(userLogInInfo.email, userLogInInfo.password);
-      navigate("/");
+      // Navigate to return URL if it exists, otherwise go to home
+      navigate(returnUrl || "/");
     } catch (error: any) {
       setError(error.message || "Failed to log in");
       console.error("Error:", error);

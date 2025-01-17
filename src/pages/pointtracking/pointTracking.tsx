@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { PieChart, Pie, Cell,Tooltip,Legend,ResponsiveContainer,} from "recharts";
-import {  Calendar as CalendarIcon, ChevronRight,  X, ChevronLeft,} from "lucide-react";
+import {  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import {  X, Trophy, Target, ChevronRight, Calendar } from "lucide-react";
 import { collection, getDocs, DocumentReference, query, where, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { getAuth } from "firebase/auth";
 import Layout from "@/components/layout";
+import Select from 'react-select';
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // Updated interfaces to match Firebase structure
 interface Event {
@@ -27,19 +29,102 @@ interface Event {
   mycsd_status: string;
 }
 
-interface Student {
-  stud_email: string;
-  stud_matrics: number;
-  stud_name: string;
-  stud_pwd: string;
-}
-
 interface MycsdPoint {
-  event_ID: DocumentReference;
+  event_id: DocumentReference;
   mycsd_point: number;
   mycsd_status: string;
-  student_ID: DocumentReference;
+  stud_id: DocumentReference;
 }
+
+interface Goal {
+  completed: boolean;
+  createdAt: { seconds: number; nanoseconds: number };
+  goal_points: number;
+  goal_title: string;
+  goal_type: string;
+  semester: string;
+  stud_id: DocumentReference;
+}
+
+const ProgressMessage: React.FC<{ percentage: number }> = ({ percentage }) => {
+  const getMessage = () => {
+    if (percentage >= 100) return {
+      title: "Outstanding Achievement! 🎉",
+      message: "Congratulations! Let's step up your game next time!",
+      color: "bg-purple-100 text-purple-800"
+    };
+    if (percentage >= 80) return {
+      title: "Almost There! 💪",
+      message: "You're so close to reaching your goal. Fighting!",
+      color: "bg-purple-200 text-purple-800"
+    };
+    if (percentage >= 50) return {
+      title: "Halfway Mark! 🎯",
+      message: "You're literally halfway there! Keep up the great work!",
+      color: "bg-purple-300 text-purple-800"
+    };
+    return {
+      title: "Starting Your Journey! 🚀",
+      message: "Let's strive to participate in more events!",
+      color: "bg-purple-400 text-purple-800"
+    };
+  };
+
+  const messageData = getMessage();
+
+  return (
+    <Alert className={`${messageData.color} border-none mb-4`}>
+      <AlertTitle className="font-bold">{messageData.title}</AlertTitle>
+      <AlertDescription>{messageData.message}</AlertDescription>
+    </Alert>
+  );
+};
+
+const ProgressStats: React.FC<{
+  events: Event[];
+  totalPoints: number;
+  goalPoints: number;
+}> = ({ events, totalPoints, goalPoints }) => {
+  const getActiveMonth = () => {
+    const monthPoints = events.reduce((acc, event) => {
+      if (event.point_status === 'assigned') {
+        const month = new Date(event.event_date).getMonth();
+        acc[month] = (acc[month] || 0) + event.event_points;
+      }
+      return acc;
+    }, {} as { [key: number]: number });
+
+    if (Object.keys(monthPoints).length === 0) return "No events yet";
+
+    const maxMonth = Object.entries(monthPoints).reduce((a, b) => 
+      b[1] > a[1] ? b : a
+    )[0];
+
+    return new Date(0, parseInt(maxMonth)).toLocaleString('default', { month: 'long' });
+  };
+
+  return (
+    <div className="space-y-4 p-4 bg-white rounded-lg shadow">
+      <div className="flex items-center space-x-2 text-purple-600">
+        <Calendar className="h-5 w-5" />
+        <span className="font-semibold">Most Active Month:</span>
+        <span>{getActiveMonth()}</span>
+      </div>
+      
+      <div className="flex items-center space-x-2 text-purple-600">
+        <Target className="h-5 w-5" />
+        <span className="font-semibold">Current Progress:</span>
+        <span>{Math.round((totalPoints / goalPoints) * 100)}%</span>
+      </div>
+      
+      <div className="flex items-center space-x-2 text-purple-600">
+        <Trophy className="h-5 w-5" />
+        <span className="font-semibold">Points to Goal:</span>
+        <span>{Math.max(0, goalPoints - totalPoints)} points remaining</span>
+      </div>
+    </div>
+  );
+};
 
 const Modal: React.FC<{
   isOpen: boolean;
@@ -63,119 +148,22 @@ const Modal: React.FC<{
   );
 };
 
-interface CalendarViewProps {
-  onDateSelect: (date: Date) => void;
-}
-
-const CalendarView: React.FC<CalendarViewProps> = ({ onDateSelect }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-
-  const daysInMonth = new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth() + 1,
-    0
-  ).getDate();
-  const firstDayOfMonth = new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
-    1
-  ).getDay();
-
-  const weeks = [];
-  let week = new Array(7).fill(null);
-  let dayCounter = 1;
-
-  for (let i = firstDayOfMonth; i < 7; i++) {
-    week[i] = dayCounter++;
-  }
-  weeks.push([...week]);
-
-  week = new Array(7).fill(null);
-  while (dayCounter <= daysInMonth) {
-    for (let i = 0; i < 7 && dayCounter <= daysInMonth; i++) {
-      week[i] = dayCounter++;
-    }
-    weeks.push([...week]);
-    week = new Array(7).fill(null);
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow p-4 w-full">
-      <div className="flex justify-between items-center mb-4">
-        <button
-          onClick={() =>
-            setCurrentDate(
-              new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)
-            )
-          }
-          className="p-1 hover:bg-gray-100 rounded"
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <h3 className="font-semibold">
-          {currentDate.toLocaleString("default", {
-            month: "long",
-            year: "numeric",
-          })}
-        </h3>
-        <button
-          onClick={() =>
-            setCurrentDate(
-              new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)
-            )
-          }
-          className="p-1 hover:bg-gray-100 rounded"
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <div key={day} className="text-center text-sm font-medium p-2">
-            {day}
-          </div>
-        ))}
-        {weeks.map((week, i) =>
-          week.map((day, j) => (
-            <div
-              key={`${i}-${j}`}
-              className={`text-center p-2 cursor-pointer hover:bg-pink-50 rounded ${
-                day ? "hover:bg-pink-100" : ""
-              }`}
-              onClick={() =>
-                day &&
-                onDateSelect(
-                  new Date(
-                    currentDate.getFullYear(),
-                    currentDate.getMonth(),
-                    day
-                  )
-                )
-              }
-            >
-              {day}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
 const PointTrackingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [events, setEvents] = useState<Event[]>([]);
-  const [, setMycsdPoints] = useState<MycsdPoint[]>([]);
-  const [loading, setLoading] = useState(true);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [goalPoints] = useState(100);
+  const [goalPoints, setGoalPoints] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [isLoadingGoals, setIsLoadingGoals] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [tempSearchTerm, setTempSearchTerm] = useState("");
 
   const auth = getAuth();
-  const COLORS = ["#afeeee", "#ffa07a"];
+  const COLORS = ["#6a0dad", "#d8bfd8"];
 
   const progressData = [
     { name: "Completed", value: totalPoints },
@@ -184,28 +172,56 @@ const PointTrackingPage: React.FC = () => {
 
   const fetchData = async () => {
     try {
+      setError(null);
+      setIsLoadingEvents(true);
+      setIsLoadingGoals(true);
+
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        console.log("No current user");
-        setLoading(false);
+        setError("No user logged in");
         return;
       }
-
-      console.log("Current user email:", currentUser.email);
 
       const studentsRef = collection(db, "STUDENT");
       const studentQuery = query(studentsRef, where("stud_email", "==", currentUser.email));
       const studentSnapshot = await getDocs(studentQuery);
       
-      if (!studentSnapshot.empty) {
-        const studentDoc = studentSnapshot.docs[0];
-        const studentRef = studentDoc.ref;
-        const studentData = studentDoc.data() as Student;
-        
-        console.log("Found student:", studentData);
+      if (studentSnapshot.empty) {
+        setError("No student found for this account");
+        return;
+      }
 
+      const studentDoc = studentSnapshot.docs[0];
+      const studentRef = studentDoc.ref;
+
+      // Fetch goals
+      try {
+        const goalsRef = collection(db, "GOALS");
+        const goalQuery = query(
+          goalsRef,
+          where("stud_id", "==", studentRef),
+          where("goal_type", "==", "long-term")
+        );
+        const goalSnapshot = await getDocs(goalQuery);
+
+        if (!goalSnapshot.empty) {
+          const goalData = goalSnapshot.docs[0].data() as Goal;
+          setGoalPoints(goalData.goal_points);
+        }
+      } catch (error) {
+        console.error("Error fetching goals:", error);
+        setError("Failed to load goals");
+      } finally {
+        setIsLoadingGoals(false);
+      }
+
+      // Fetch events
+      try {
         const mycsdRef = collection(db, "MYCSD");
-        const mycsdQuery = query(mycsdRef, where("student_ID", "==", studentRef));
+        const mycsdQuery = query(
+          mycsdRef, 
+          where("stud_id", "==", studentRef)
+        );
         const mycsdSnapshot = await getDocs(mycsdQuery);
 
         const mycsdData = mycsdSnapshot.docs.map(doc => ({
@@ -213,19 +229,17 @@ const PointTrackingPage: React.FC = () => {
           id: doc.id
         } as MycsdPoint & { id: string }));
 
-        console.log("Found MYCSD points:", mycsdData);
-
         const eventPromises = mycsdData.map(async point => {
           try {
-            const eventDoc = await getDoc(point.event_ID);
+            const eventDoc = await getDoc(point.event_id);
             if (eventDoc.exists()) {
               const eventData = eventDoc.data();
-              console.log("Found event:", eventData);
               return {
                 ...eventData,
                 id: eventDoc.id,
-                mycsd_point: point.mycsd_point,
-                mycsd_status: point.mycsd_status
+                mycsd_point: eventData.event_points,
+                mycsd_status: eventData.point_status,
+                point_status: eventData.point_status
               };
             }
             return null;
@@ -238,21 +252,21 @@ const PointTrackingPage: React.FC = () => {
         const eventsData = (await Promise.all(eventPromises))
           .filter(event => event !== null) as Event[];
 
-        console.log("Final events data:", eventsData);
-
         setEvents(eventsData);
-        setMycsdPoints(mycsdData);
 
-        const total = mycsdData.reduce((sum, point) => sum + point.mycsd_point, 0);
+        const total = eventsData.reduce((sum, event) => 
+          event.point_status === 'assigned' ? sum + event.event_points : sum, 0);
         setTotalPoints(total);
-        console.log("Total points:", total);
-      } else {
-        console.log("No student found for email:", currentUser.email);
+      } catch (error) {
+        console.error("Error fetching events:", error);
+        setError("Failed to load events");
+      } finally {
+        setIsLoadingEvents(false);
       }
+
     } catch (error) {
       console.error("Error in fetchData:", error);
-    } finally {
-      setLoading(false);
+      setError("Something went wrong");
     }
   };
 
@@ -265,57 +279,122 @@ const PointTrackingPage: React.FC = () => {
     setShowEventModal(true);
   };
 
-  const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-    setShowCalendar(false);
-    // Filter events by selected date
-    // Additional logic for filtered events can be added here
+  // Get unique categories from events
+  const categories = [...new Set(events.map(event => event.event_cat))];
+  const categoryOptions = categories.map(cat => ({ value: cat, label: cat }));
+
+  // Filter and sort events
+  const filterEvents = () => {
+    let filteredEvents = getHistoryEvents();
+    return filteredEvents.filter(event => {
+      const matchesSearch = event.event_title.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = !selectedCategory || event.event_cat === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
   };
 
-  if (loading) {
+  const FilterControls = () => {
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    return (
+      <div className="mb-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Search events..."
+              className="p-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={tempSearchTerm}
+              onChange={(e) => setTempSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setSearchTerm(tempSearchTerm);
+                  inputRef.current?.blur();
+                }
+              }}
+              ref={inputRef}
+            />
+            <button
+              onClick={() => {
+                setSearchTerm(tempSearchTerm);
+                inputRef.current?.blur();
+              }}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              Search
+            </button>
+          </div>
+          
+          <Select
+            placeholder="Select Category"
+            isClearable
+            options={categoryOptions}
+            onChange={(option) => setSelectedCategory(option?.value || null)}
+            className="text-sm"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const getRecentEvents = () => {
+    return events.filter(event => {
+      return event.point_status === 'pending' && event.event_status === 'approved';
+    }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+  };
+
+  const getHistoryEvents = () => {
+    return events.filter(event => {
+      return event.point_status === 'assigned' && event.event_status === 'completed';
+    }).sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime());
+  };
+
+  if (isLoadingEvents || isLoadingGoals) {
     return (
       <Layout>
-        <div className="flex-1 bg-pink-100 flex items-center justify-center min-h-screen">
-          <div className="text-pink-600 text-xl">Loading...</div>
+        <div className="flex-1 bg-purple-100 flex items-center justify-center min-h-screen">
+          <div className="text-purple-600 text-xl">
+            {isLoadingGoals ? "Loading goals..." : "Loading events..."}
+          </div>
         </div>
       </Layout>
     );
   }
 
-  const getUpcomingEvents = () => {
-    const today = new Date();
-    return events.filter(event => {
-      const eventDate = new Date(event.event_date);
-      return eventDate >= today && event.mycsd_status !== 'completed';
-    }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
-  };
-
-  const getRecentEvents = () => {
-    const today = new Date();
-    return events.filter(event => {
-      const eventDate = new Date(event.event_date);
-      return eventDate <= today || event.mycsd_status === 'completed';
-    }).sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime());
-  };
+  if (error) {
+    return (
+      <Layout>
+        <div className="flex-1 bg-purple-100 flex flex-col items-center justify-center min-h-screen">
+          <div className="text-red-600 text-xl mb-4">{error}</div>
+          <button 
+            onClick={() => fetchData()} 
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="flex-1 bg-pink-50 p-8 min-h-screen">
+      <div className="flex-1 bg-purple-50 p-8 min-h-screen">
         <div className="max-w-6xl mx-auto space-y-6">
           <div className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
             <div className="flex space-x-4">
               <button
                 onClick={() => setActiveTab("overview")}
                 className={`${
-                  activeTab === "overview" ? "text-pink-600" : "text-gray-600"
+                  activeTab === "overview" ? "text-purple-600" : "text-gray-600"
                 }`}
               >
-                CSDS
+                MyCSD
               </button>
               <button
                 onClick={() => setActiveTab("history")}
                 className={`${
-                  activeTab === "history" ? "text-pink-600" : "text-gray-600"
+                  activeTab === "history" ? "text-purple-600" : "text-gray-600"
                 }`}
               >
                 History
@@ -323,92 +402,84 @@ const PointTrackingPage: React.FC = () => {
               <button
                 onClick={() => setActiveTab("events")}
                 className={`${
-                  activeTab === "events" ? "text-pink-600" : "text-gray-600"
+                  activeTab === "events" ? "text-purple-600" : "text-gray-600"
                 }`}
               >
                 Events
               </button>
             </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowCalendar(!showCalendar)}
-                className="flex items-center text-pink-600"
-              >
-                <CalendarIcon className="mr-2" size={20} />
-                <span>
-                  {selectedDate.toLocaleDateString("default", {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </button>
-              {showCalendar && (
-                <div className="absolute top-full right-0 mt-2 z-50">
-                  <div className="max-w-md">
-                    <CalendarView onDateSelect={handleDateSelect} />
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {activeTab === "overview" && (
             <div className="bg-white rounded-lg shadow p-6 space-y-6">
-              <h2 className="text-lg font-semibold mb-4">This Semester</h2>
+              <h2 className="text-lg font-semibold mb-4">Records</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-pink-100 p-4 rounded-md text-center">
-                  <div className="text-4xl font-bold text-pink-600">
+                <div className="bg-purple-100 p-4 rounded-md text-center">
+                  <div className="text-4xl font-bold text-purple-600">
                     {totalPoints}
                   </div>
                   <div className="text-gray-500">Total Points</div>
                 </div>
-                <div className="bg-pink-100 p-4 rounded-md text-center">
-                  <div className="text-4xl font-bold text-pink-600">
+                <div className="bg-purple-100 p-4 rounded-md text-center">
+                  <div className="text-4xl font-bold text-purple-600">
                     {goalPoints}
                   </div>
                   <div className="text-gray-500">Goal Points</div>
                 </div>
-                <div className="bg-pink-100 p-4 rounded-md text-center">
-                  <div className="text-4xl font-bold text-pink-600">
+                <div className="bg-purple-100 p-4 rounded-md text-center">
+                  <div className="text-4xl font-bold text-purple-600">
                     {Math.round((totalPoints / goalPoints) * 100)}%
                   </div>
                   <div className="text-gray-500">Progress</div>
                 </div>
               </div>
 
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={progressData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {progressData.map((_entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={progressData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {progressData.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                <div className="space-y-4">
+                  <ProgressMessage 
+                    percentage={Math.round((totalPoints / goalPoints) * 100)} 
+                  />
+                  <ProgressStats 
+                    events={events}
+                    totalPoints={totalPoints}
+                    goalPoints={goalPoints}
+                  />
+                </div>
+              </div>
 
               <div className="mt-6">
-                <h3 className="font-semibold text-pink-600 mb-2">
+                <h3 className="font-semibold text-purple-600 mb-2">
                   Recent Activity
                 </h3>
                 {getRecentEvents().slice(0, 3).map((event) => (
                   <div
                     key={event.id}
-                    className="flex justify-between items-center py-2 border-b"
+                    onClick={() => handleEventClick(event)}
+                    className="flex justify-between items-center py-2 border-b cursor-pointer hover:bg-gray-50"
                   >
                     <div>{event.event_title}</div>
                     <div className="text-sm text-gray-500">
@@ -423,6 +494,9 @@ const PointTrackingPage: React.FC = () => {
           {activeTab === "history" && (
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold mb-4">History</h2>
+              
+              <FilterControls />
+              
               <table className="w-full">
                 <thead>
                   <tr>
@@ -433,7 +507,7 @@ const PointTrackingPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {getRecentEvents().map((event) => (
+                  {filterEvents().map((event) => (
                     <tr
                       key={event.id}
                       onClick={() => handleEventClick(event)}
@@ -452,90 +526,74 @@ const PointTrackingPage: React.FC = () => {
 
           {activeTab === "events" && (
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold mb-4">Upcoming Events</h2>
+              <h2 className="text-lg font-semibold mb-4">Recent Events</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {getUpcomingEvents().map((event) => (
+                {getRecentEvents().map((event) => (
                   <div
                     key={event.id}
-                    className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50" onClick={() => handleEventClick(event)}
-                    >
-                      <div className="font-medium">{event.event_title}</div>
-                      <div className="text-sm text-gray-500">{event.event_date}</div>
-                      <div className="mt-2 text-pink-600">
-                        {event.event_points} Points
-                      </div>
-                      <div className="mt-1 text-sm text-gray-500">
-                        {event.event_cat}
-                      </div>
-                      <div className="mt-1 text-sm text-gray-600 truncate">
-                        {event.event_desc}
-                      </div>
+                    className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50" 
+                    onClick={() => handleEventClick(event)}
+                  >
+                    <div className="font-medium">{event.event_title}</div>
+                    <div className="text-sm text-gray-500">{event.event_date}</div>
+                    <div className="mt-2 text-purple-600">
+                      {event.event_points} Points
                     </div>
-                  ))}
+                    <div className="mt-1 text-sm text-gray-500">
+                      {event.event_cat}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600 truncate">
+                      {event.event_desc}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Modal isOpen={showEventModal} onClose={() => setShowEventModal(false)}>
+            {selectedEvent && (
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold">{selectedEvent.event_title}</h2>
+                <div>
+                  <div className="text-sm text-gray-500">Category</div>
+                  <div>{selectedEvent.event_cat}</div>
                 </div>
+                <div>
+                  <div className="text-sm text-gray-500">Club</div>
+                  <div>{selectedEvent.event_club}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Date</div>
+                  <div>{selectedEvent.event_date}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Points</div>
+                  <div>{selectedEvent.event_points}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Status</div>
+                  <div>{selectedEvent.event_status}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Description</div>
+                  <div>{selectedEvent.event_desc}</div>
+                </div>
+                {selectedEvent.completedAt && (
+                  <div>
+                    <div className="text-sm text-gray-500">Completed At</div>
+                    <div>
+                      {new Date(selectedEvent.completedAt.seconds * 1000).toLocaleString()}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-    
-            <Modal isOpen={showEventModal} onClose={() => setShowEventModal(false)}>
-              {selectedEvent && (
-                <div className="space-y-4">
-                  <h2 className="text-xl font-semibold">{selectedEvent.event_title}</h2>
-                  <div>
-                    <div className="text-sm text-gray-500">Category</div>
-                    <div>{selectedEvent.event_cat}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Club</div>
-                    <div>{selectedEvent.event_club}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Date</div>
-                    <div>{selectedEvent.event_date}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Points</div>
-                    <div>{selectedEvent.event_points}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Status</div>
-                    <div>{selectedEvent.event_status}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Description</div>
-                    <div>{selectedEvent.event_desc}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Expected Attendees</div>
-                    <div>{selectedEvent.expected_attendees}</div>
-                  </div>
-                  {selectedEvent.pdf_url && (
-                    <div>
-                      <div className="text-sm text-gray-500">Additional Information</div>
-                      <a 
-                        href={selectedEvent.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-pink-600 hover:text-pink-700"
-                      >
-                        View PDF
-                      </a>
-                    </div>
-                  )}
-                  {selectedEvent.completedAt && (
-                    <div>
-                      <div className="text-sm text-gray-500">Completed At</div>
-                      <div>
-                        {new Date(selectedEvent.completedAt.seconds * 1000).toLocaleString()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Modal>
-          </div>
+          </Modal>
         </div>
-      </Layout>
-    );
-  };
-  
-  export default PointTrackingPage;
+      </div>
+    </Layout>
+  );
+};
+
+export default PointTrackingPage;

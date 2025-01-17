@@ -12,6 +12,7 @@ import EventAttendance from "./pages/club/ClubAttendance";
 import PointTrackingPage from "./pages/pointtracking/pointTracking";
 import PointAllocation from "./pages/admin/PointAllocation";
 import GoalSetting from "./pages/goal/goalSetting";
+import EventAttendanceScanner from "./pages/event-attendance/[eventId]";
 
 export const router = createBrowserRouter([
   // Public routes
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
     element: <Signup />,
     errorElement: <Error />,
   },
+  
   
   // Protected regular user routes
   {
@@ -42,7 +44,11 @@ export const router = createBrowserRouter([
       {
         path: "/goalSetting",
         element: <GoalSetting />,
-      }
+      },
+      {
+        path: "/event-attendance/:eventId",
+        element: <EventAttendanceScanner />,
+      },
     ],
   },
 
@@ -86,6 +92,9 @@ export const router = createBrowserRouter([
       }
     ],
   },
+  
 ]);
 
+
 export default router;
+
