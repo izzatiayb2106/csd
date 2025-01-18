@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import {  X, Trophy, Target, ChevronRight, Calendar } from "lucide-react";
+import {  X, Trophy, Target, Calendar } from "lucide-react";
 import { collection, getDocs, DocumentReference, query, where, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { getAuth } from "firebase/auth";

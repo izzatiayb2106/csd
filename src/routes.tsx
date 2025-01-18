@@ -13,6 +13,7 @@ import PointTrackingPage from "./pages/pointtracking/pointTracking";
 import PointAllocation from "./pages/admin/PointAllocation";
 import GoalSetting from "./pages/goal/goalSetting";
 import EventAttendanceScanner from "./pages/event-attendance/[eventId]";
+import Unauthorized from "./pages/unauthorized";
 
 export const router = createBrowserRouter([
   // Public routes
@@ -24,6 +25,11 @@ export const router = createBrowserRouter([
   {
     path: "/signup",
     element: <Signup />,
+    errorElement: <Error />,
+  },
+  {
+    path: "/:eventId",
+    element: <EventAttendanceScanner />,
     errorElement: <Error />,
   },
   
@@ -44,10 +50,6 @@ export const router = createBrowserRouter([
       {
         path: "/goalSetting",
         element: <GoalSetting />,
-      },
-      {
-        path: "/event-attendance/:eventId",
-        element: <EventAttendanceScanner />,
       },
     ],
   },

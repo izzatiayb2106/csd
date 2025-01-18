@@ -13,7 +13,7 @@ import { useUserAuth } from "@/context/userAuthContext";
 import { UserLogIn } from "@/types";
 import { Label } from "@radix-ui/react-label";
 import * as React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate,useLocation } from "react-router-dom";
 
 interface ILoginProps {}
 const initialValue: UserLogIn = {
@@ -24,21 +24,28 @@ const initialValue: UserLogIn = {
 const Login: React.FunctionComponent<ILoginProps> = () => {
   const { googleSignIn, logIn } = useUserAuth();
   const navigate = useNavigate();
+  const location = useLocation(); 
   const [userLogInInfo, setuserLogInInfo] = React.useState<UserLogIn>(initialValue);
   const [error, setError] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
-  // Get return URL from search params
-  const searchParams = new URLSearchParams(window.location.search);
-  const returnUrl = searchParams.get('returnUrl');
+  const handleLoginSuccess = () => {
+    const params = new URLSearchParams(location.search);
+    const returnUrl = params.get('returnUrl');
+    
+    if (returnUrl) {
+      navigate(decodeURIComponent(returnUrl));
+    } else {
+      navigate('/'); // Default redirect
+    }
+  };
 
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     try {
       setIsLoading(true);
       await googleSignIn();
-      // Navigate to return URL if it exists, otherwise go to home
-      navigate(returnUrl || "/");
+      handleLoginSuccess();
     } catch (error: any) {
       setError(error.message || "Failed to sign in with Google");
       console.error("Error:", error);
@@ -58,8 +65,7 @@ const Login: React.FunctionComponent<ILoginProps> = () => {
       setIsLoading(true);
       setError("");
       await logIn(userLogInInfo.email, userLogInInfo.password);
-      // Navigate to return URL if it exists, otherwise go to home
-      navigate(returnUrl || "/");
+      handleLoginSuccess();
     } catch (error: any) {
       setError(error.message || "Failed to log in");
       console.error("Error:", error);

@@ -38,7 +38,7 @@ const ClubSidebar: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="absolute -right-3 top-8 z-50 bg-purple-50 border border-purple-200 rounded-full p-1 hover:bg-purple-100"
@@ -55,7 +55,7 @@ const ClubSidebar: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-col flex-1 px-3 space-y-1">
+        <div className="flex flex-col flex-1 px-3 space-y-1 overflow y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -86,7 +86,7 @@ const ClubSidebar: React.FC = () => {
           })}
         </div>
 
-        <div className="px-3 py-4 border-t border-purple-100">
+        <div className="px-3 py-4 border-t border-purple-100 mt-auto">
           <div
             className={cn(
               buttonVariants({ variant: "ghost" }),

@@ -154,7 +154,7 @@ const ClubAttendance: React.FC = () => {
 
   const generateUniqueQRCode = (eventId: string): string => {
     // Remove the leading space in the baseUrl
-    const baseUrl = "https://5c08-115-164-207-56.ngrok-free.app";
+    const baseUrl = "https://c7c1-115-164-222-27.ngrok-free.app";
     const encodedEventId = encodeURIComponent(eventId);
     const fullUrl = `${baseUrl}/event-attendance/${encodedEventId}`;
     
