@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db} from "../../firebaseConfig";
-import { getDocs, collection, query, where, getDoc, doc as docRef } from 'firebase/firestore';
+import { getDocs, collection, query, where } from 'firebase/firestore';
 import ClubSidebar from "@/components/sidebar/club";
 import { useUserAuth } from "@/context/userAuthContext";
 import '@uploadcare/react-uploader/core.css';
@@ -32,9 +32,9 @@ interface Event {
 
 interface Participant {
   id: string;
-  name: string;          // Changed from student_name
-  stud_id: string;       // Changed from student_id
-  timestamp: string;     // Changed from attendance_time
+  name: string;          
+  stud_id: string;      
+  timestamp: string;    
 }
 
 interface ClubLayoutProps {
@@ -42,10 +42,19 @@ interface ClubLayoutProps {
 }
 
 const ClubLayout: React.FC<ClubLayoutProps> = ({ children }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      <ClubSidebar />
-      <main className="flex-1 p-8">
+    <div className="min-h-screen bg-gray-100 flex">
+      {/* Sidebar */}
+      <ClubSidebar isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
+
+      {/* Main Content */}
+      <main
+        className={`transition-all duration-300 ease-in-out p-8 flex-1 ${
+          isCollapsed ? 'ml-24' : 'ml-72'
+        }`}
+      >
         {children}
       </main>
     </div>
@@ -74,7 +83,6 @@ const StatCard: React.FC<{
     </div>
   </motion.div>
 );
-
 const ClubDashboard = () => {
   const { user } = useUserAuth();
   const [clubName, setClubName] = useState<string>("");
@@ -197,11 +205,12 @@ const ClubDashboard = () => {
 
   return (
     <ClubLayout>
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-6"
-      >
+      <div className="p-6">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-6"
+        >
         <Card className="border-none shadow-none">
           <CardHeader className="pb-2">
             {isLoading ? (
@@ -435,9 +444,9 @@ const ClubDashboard = () => {
         </div>
       </DialogContent>
     </Dialog>
-      </motion.div>
+        </motion.div>
+      </div>
     </ClubLayout>
   );
 };
-
 export default ClubDashboard;
