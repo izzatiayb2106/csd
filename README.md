@@ -1,4 +1,4 @@
-# MyCSD USM Extracurricular Point Trackingg Application
+# MyCSD USM Extracurricular Point Tracking Application
 
 Introduction
 MyCSD USM is a web-based system designed to manage and track extracurricular points for Universiti Sains Malaysia (USM) students and clubs. This system provides a structured and transparent way to record students' participation in extracurricular activities, ensuring fair and efficient point allocation.
